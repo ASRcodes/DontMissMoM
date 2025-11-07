@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "271407238577",
+    "project_id": "dontmissmom-445990c1",
+    "storage_bucket": "dontmissmom-445990c1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:271407238577:android:c2c1333f1f7d38b2fe8190",
+        "android_client_info": {
+          "package_name": "com.example.dontmissmom"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxODpIMXbmIeLgnHjrZkTAFsuhPKh0VLc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
