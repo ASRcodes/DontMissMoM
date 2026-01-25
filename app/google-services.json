@@ -12,7 +12,20 @@
           "package_name": "com.example.dontmissmom"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "271407238577-3bsk7bbn9hh9ben8qi13b2j5aavb4tf4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.dontmissmom",
+            "certificate_hash": "a8eda605ecc671ca8126f13a2c9a4b22a5f2e715"
+          }
+        },
+        {
+          "client_id": "271407238577-f03609qra5dngbadfr54ueggvagg70p5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBxODpIMXbmIeLgnHjrZkTAFsuhPKh0VLc"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "271407238577-f03609qra5dngbadfr54ueggvagg70p5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

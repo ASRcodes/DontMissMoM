@@ -3,10 +3,12 @@ package com.example.dontmissmom
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -18,7 +20,6 @@ class AlertListenerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("AlertService", "Service created")
         startForegroundServiceNotification()
         listenForIncomingAlerts()
     }
@@ -29,88 +30,127 @@ class AlertListenerService : Service() {
 
     override fun onDestroy() {
         listenerRegistration?.remove()
+        sendBroadcast(Intent("RESTART_ALERT_LISTENER"))
         super.onDestroy()
-        Log.d("AlertService", "Service stopped")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // 🟢 Step 1: Create persistent notification to keep service alive
     private fun startForegroundServiceNotification() {
         val channelId = "alert_listener_channel"
-        val channel = NotificationChannel(
-            channelId,
-            "Alert Listener",
-            NotificationManager.IMPORTANCE_LOW
-        )
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
 
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("DontMissMOM active")
-            .setContentText("Listening for emergency alerts")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .build()
-
-        startForeground(1, notification)
-    }
-
-    // 🟡 Step 2: Start listening for alerts in Firestore
-    private fun listenForIncomingAlerts() {
-        val user = auth.currentUser
-        if (user == null) {
-            Log.e("AlertService", "No logged in user")
-            stopSelf()
-            return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Emergency Listener",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            channel.setSound(null, null)
+            nm.createNotificationChannel(channel)
         }
 
-        val uid = user.uid
-        Log.d("AlertService", "Listening for alerts for UID: $uid")
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("DontMissMOM active")
+            .setContentText("Listening for emergency alerts")
+            .setOngoing(true)
+            .build()
+
+        startForeground(101, notification)
+    }
+
+    private fun listenForIncomingAlerts() {
+        val uid = auth.currentUser?.uid
+            ?: getSharedPreferences("app_prefs", MODE_PRIVATE)
+                .getString("saved_uid", null)
+            ?: return
 
         listenerRegistration = firestore.collection("alerts")
-            .document(uid)
-            .collection("incoming")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) {
-                    Log.e("AlertService", "Error listening: ${e.message}")
-                    return@addSnapshotListener
-                }
-                if (snapshot == null || snapshot.isEmpty) return@addSnapshotListener
+            .whereEqualTo("toUid", uid)
+            .addSnapshotListener { snapshot, _ ->
+                snapshot?.documentChanges?.forEach { change ->
+                    if (change.type.name != "ADDED") return@forEach
 
-                for (change in snapshot.documentChanges) {
-                    if (change.type.name == "ADDED") {
-                        val doc = change.document
-                        val senderName = doc.getString("senderName") ?: "Unknown"
-                        val senderPhone = doc.getString("receiverPhone") ?: "N/A"
+                    val doc = change.document
+                    if (doc.getBoolean("handled") == true) return@forEach
 
-                        Log.d("AlertService", "🚨 Incoming alert from $senderName ($senderPhone)")
+                    val senderName = doc.getString("fromName") ?: "Unknown"
+                    val senderPhone = doc.getString("fromPhone") ?: ""
 
-                        // Wake the screen before launching popup
-                        wakeScreen()
+                    wakeScreen()
+                    showEmergencyNotification(senderName, senderPhone)
 
-                        // Launch popup activity
-                        val popupIntent = Intent(this, AlertPopupActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            putExtra("senderName", senderName)
-                            putExtra("senderPhone", senderPhone)
-                        }
-                        startActivity(popupIntent)
-                    }
+                    doc.reference.update("handled", true)
                 }
             }
     }
 
-    // 🔔 Step 3: Wake screen for visibility
-    private fun wakeScreen() {
-        try {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            val wakeLock = pm.newWakeLock(
-                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-                "DontMissMOM::WakeLock"
-            )
-            wakeLock.acquire(5000) // wake for 5 seconds
-        } catch (e: Exception) {
-            Log.e("AlertService", "WakeLock failed: ${e.message}")
+    private fun showEmergencyNotification(senderName: String, senderPhone: String) {
+
+        // 🔊 START SIREN
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, EmergencySoundService::class.java).apply {
+                action = EmergencySoundService.ACTION_START
+            }
+        )
+
+        val openIntent = Intent(this, AlertPopupActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("senderName", senderName)
+            putExtra("senderPhone", senderPhone)
         }
+
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this, 0, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // ❌ SWIPE → STOP SIREN
+        val deleteIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, EmergencySoundService::class.java).apply {
+                action = EmergencySoundService.ACTION_STOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val channelId = "emergency_alert_channel"
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    channelId,
+                    "Emergency Alerts",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+            )
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("🚨 Emergency Alert")
+            .setContentText("Emergency triggered by $senderName")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setDeleteIntent(deleteIntent) // 👈 swipe stops siren
+            .setOngoing(false)
+            .build()
+
+        nm.notify(999, notification)
+    }
+
+    private fun wakeScreen() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wakeLock = pm.newWakeLock(
+            PowerManager.FULL_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "DontMissMOM:Wake"
+        )
+        wakeLock.acquire(8000)
     }
 }

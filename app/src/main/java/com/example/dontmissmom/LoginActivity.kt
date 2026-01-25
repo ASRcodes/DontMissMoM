@@ -2,149 +2,101 @@ package com.example.dontmissmom
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ProgressBar
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.google.firebase.FirebaseException
-import com.google.firebase.auth.*
-import java.util.concurrent.TimeUnit
+import androidx.cardview.widget.CardView
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FirebaseFirestore
 
-class LoginActivity : AppCompatActivity() {
-
-    private lateinit var etPhone: EditText
-    private lateinit var btnSendOtp: Button
-    private lateinit var etOtp: EditText
-    private lateinit var btnVerifyOtp: Button
-    private lateinit var btnResendOtp: Button
-    private lateinit var progressBar: ProgressBar
-    private lateinit var tvGoToRegister: TextView
+class LoginActivity : BaseActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private var verificationId: String? = null
-    private var resendToken: PhoneAuthProvider.ForceResendingToken? = null
+    private lateinit var googleSignInClient: GoogleSignInClient
+    private val db = FirebaseFirestore.getInstance()
+    private val RC_SIGN_IN = 9001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_login)
-
-        etPhone = findViewById(R.id.etPhone)
-        btnSendOtp = findViewById(R.id.btnSendOtp)
-        etOtp = findViewById(R.id.etOtp)
-        btnVerifyOtp = findViewById(R.id.btnVerifyOtp)
-        btnResendOtp = findViewById(R.id.btnResendOtp)
-        progressBar = findViewById(R.id.progressBar)
-        tvGoToRegister = findViewById(R.id.tvGoToRegister)
 
         auth = FirebaseAuth.getInstance()
 
-        btnSendOtp.setOnClickListener {
-            val phone = etPhone.text.toString().trim()
-            if (phone.isEmpty()) {
-                etPhone.error = "Enter phone"
-                return@setOnClickListener
-            }
-            sendOtp(formatPhone(phone))
+        // 1️⃣ CHECK AUTH FIRST (Before loading the UI)
+        if (auth.currentUser != null) {
+            // User is already logged in!
+            // Do NOT load the login screen. Check their status immediately.
+            checkUserDatabase(auth.currentUser!!.uid)
+            return // 🛑 STOP HERE. Don't run the rest of the code.
         }
 
-        btnVerifyOtp.setOnClickListener {
-            val code = etOtp.text.toString().trim()
-            val vId = verificationId
-            if (code.isEmpty() || vId == null) {
-                Toast.makeText(this, "Enter OTP", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            progressBar.visibility = View.VISIBLE
-            val credential = PhoneAuthProvider.getCredential(vId, code)
-            signInWithCredential(credential)
-        }
+        // 2️⃣ Only load the UI if they are NOT logged in
+        setContentView(R.layout.activity_login)
 
-        btnResendOtp.setOnClickListener {
-            val phone = etPhone.text.toString().trim()
-            resendToken?.let {
-                resendOtp(formatPhone(phone), it)
-            } ?: sendOtp(formatPhone(phone))
-        }
-
-        tvGoToRegister.setOnClickListener {
-            startActivity(Intent(this, RegisterActivity::class.java))
-            finish()
-        }
-    }
-
-    private fun formatPhone(raw: String): String {
-        val cleaned = raw.replace("\\s".toRegex(), "")
-        return if (cleaned.length == 10 && !cleaned.startsWith("+")) "+91$cleaned" else cleaned
-    }
-
-    private fun sendOtp(phoneWithCode: String) {
-        progressBar.visibility = View.VISIBLE
-        val options = PhoneAuthOptions.newBuilder(auth)
-            .setPhoneNumber(phoneWithCode)
-            .setTimeout(60L, TimeUnit.SECONDS)
-            .setActivity(this)
-            .setCallbacks(object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-                override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                    signInWithCredential(credential)
-                }
-
-                override fun onVerificationFailed(e: FirebaseException) {
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this@LoginActivity, "OTP error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-
-                override fun onCodeSent(s: String, token: PhoneAuthProvider.ForceResendingToken) {
-                    progressBar.visibility = View.GONE
-                    verificationId = s
-                    resendToken = token
-                    Toast.makeText(this@LoginActivity, "OTP Sent", Toast.LENGTH_SHORT).show()
-                }
-            }).build()
-        PhoneAuthProvider.verifyPhoneNumber(options)
-    }
-
-    private fun resendOtp(phoneWithCode: String, token: PhoneAuthProvider.ForceResendingToken) {
-        progressBar.visibility = View.VISIBLE
-        val options = PhoneAuthOptions.newBuilder(auth)
-            .setPhoneNumber(phoneWithCode)
-            .setTimeout(60L, TimeUnit.SECONDS)
-            .setActivity(this)
-            .setCallbacks(object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-                override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                    signInWithCredential(credential)
-                }
-
-                override fun onVerificationFailed(e: FirebaseException) {
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this@LoginActivity, "Resend failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-
-                override fun onCodeSent(id: String, token2: PhoneAuthProvider.ForceResendingToken) {
-                    progressBar.visibility = View.GONE
-                    verificationId = id
-                    resendToken = token2
-                    Toast.makeText(this@LoginActivity, "OTP resent", Toast.LENGTH_SHORT).show()
-                }
-            })
-            .setForceResendingToken(token)
+        // Configure Google Sign In
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(getString(R.string.default_web_client_id))
+            .requestEmail()
             .build()
-        PhoneAuthProvider.verifyPhoneNumber(options)
+        googleSignInClient = GoogleSignIn.getClient(this, gso)
+
+        findViewById<CardView>(R.id.cardGoogleSignIn).setOnClickListener {
+            signIn()
+        }
     }
 
-    private fun signInWithCredential(credential: PhoneAuthCredential) {
+    private fun signIn() {
+        val signInIntent = googleSignInClient.signInIntent
+        startActivityForResult(signInIntent, RC_SIGN_IN)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RC_SIGN_IN) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            try {
+                val account = task.getResult(ApiException::class.java)!!
+                firebaseAuthWithGoogle(account.idToken!!)
+            } catch (e: ApiException) {
+                Toast.makeText(this, "Google sign in failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun firebaseAuthWithGoogle(idToken: String) {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
         auth.signInWithCredential(credential)
-            .addOnCompleteListener { task ->
-                progressBar.visibility = View.GONE
+            .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    // login success -> go to main
-                    startActivity(Intent(this, MainActivity::class.java))
-                    finish()
+                    checkUserDatabase(auth.currentUser!!.uid)
                 } else {
-                    Toast.makeText(this, "Login failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Firebase Auth Failed", Toast.LENGTH_SHORT).show()
                 }
+            }
+    }
+
+    private fun checkUserDatabase(uid: String) {
+        db.collection("users").document(uid).get()
+            .addOnSuccessListener { document ->
+                if (document.exists() && !document.getString("phone").isNullOrEmpty()) {
+                    // ✅ User Ready -> Go Home
+                    val intent = Intent(this, MainActivity::class.java)
+                    startActivity(intent)
+                    finish() // Close LoginActivity so they can't go back
+                } else {
+                    // ⚠️ User New/Incomplete -> Go to Phone Link
+                    val intent = Intent(this, PhoneLinkActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                }
+            }
+            .addOnFailureListener {
+                // Network error? Fallback to showing the login screen so they aren't stuck on white screen
+                setContentView(R.layout.activity_login)
+                Toast.makeText(this, "Network error. Check internet.", Toast.LENGTH_SHORT).show()
             }
     }
 }

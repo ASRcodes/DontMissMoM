@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/layoutNoInternet"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="?android:attr/colorBackground"
+    android:padding="32dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:elevation="50dp">
+
+    <ImageView
+        android:id="@+id/imgNoInternet"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
+        android:src="@drawable/wifi"
+        android:layout_marginBottom="24dp"
+        android:contentDescription="No Internet Illustration"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No Internet Connection"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="?android:attr/textColorPrimary"
+        android:gravity="center"
+        android:layout_marginBottom="12dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Emergency alerts cannot be sent without internet access.\n\nPlease reconnect to Wi-Fi or Mobile Data."
+        android:gravity="center"
+        android:textSize="15sp"
+        android:lineSpacingExtra="4dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:layout_marginBottom="32dp"/>
+
+</LinearLayout>
